@@ -1,0 +1,47 @@
+# Run in the foreground
+daemon off;
+
+http {
+
+  server {
+    listen 4645 default_server;
+    server_name _;
+    return 301 https://$host$request_uri;
+  }
+
+  server {
+    listen 4646 ssl;
+
+    ssl_certificate /secrets/ui.crt;
+    ssl_certificate_key /secrets/ui.key;
+
+    # Redirect to login
+    location = / {
+      proxy_pass http://unix:/secrets/api.sock:$request_uri;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Origin "${scheme}://${proxy_host}";
+      return 301 https://$host/ui/settings/tokens;
+    }
+
+    # Serve UI with workload's auth
+    location /ui/ {
+      proxy_pass http://unix:/secrets/api.sock:$request_uri;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header Origin "${scheme}://${proxy_host}";
+      proxy_set_header Authorization "Bearer {{ env "NOMAD_TOKEN" }}";
+    }
+
+    # Relies on user's auth
+    location / {
+      proxy_pass http://unix:/secrets/api.sock:$request_uri;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_read_timeout 310s;
+      proxy_buffering off;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Origin "${scheme}://${proxy_host}";
+    }
+  }
+}
+
+events {}
